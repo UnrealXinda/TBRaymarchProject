@@ -84,12 +84,9 @@ void MainComputeShader(uint2 PixelLoc : SV_DispatchThreadID)
     float DistanceToCuttingPlane = dot(SampleUVW - LocalClippingCenter, LocalClippingDirection);
 
     // Calculate the distance of the current voxel from the cutting plane in voxel space.
-    float3 CuttingPlaneIntersectPoint = SampleUVW + LocalClippingDirection * DistanceToCuttingPlane;
-    float3 CuttingPlaneOffset = SampleUVW - CuttingPlaneIntersectPoint;
-    // Offset to cutting plane in voxel space.
-    float3 VoxelCuttingPlaneOffset = CuttingPlaneOffset * uResolution;
+	float3 CuttingPlaneOffset = -LocalClippingDirection * DistanceToCuttingPlane;
     // Distance from cutting plane to voxel center in voxel space.
-    float VoxelDistance = length(VoxelCuttingPlaneOffset);
+	float VoxelDistance = uResolution * DistanceToCuttingPlane;
 
     // Weight the alpha in the voxel by an
     // aproximation of the part of the cube that's not cut away - this prevents noticeable clipping plane artifacts
@@ -115,11 +112,11 @@ void MainComputeShader(uint2 PixelLoc : SV_DispatchThreadID)
 
 	// The read/write buffers have always positive values (the alpha of current light being propagated)
     WriteBuffer[PixelLoc] = CurrentLightAlpha; 
-    
+	
     // Ignore changes smaller than 0.001 to avoid writes with almost no effect.
     if (abs(CurrentLightAlpha) > 1e-3)
     {
         // If we're removing a light, multiply alpha by -1. (but read/write buffers stay positive)
-        ALightVolume[pos] = ALightVolume[pos] + (CurrentLightAlpha * bAdded);
-    }
+		ALightVolume[pos] = ALightVolume[pos] + (CurrentLightAlpha * bAdded);
+	}
 }
