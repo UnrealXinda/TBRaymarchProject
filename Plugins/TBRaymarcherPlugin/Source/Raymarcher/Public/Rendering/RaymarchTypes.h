@@ -19,10 +19,6 @@
 #include "UObject/ObjectMacros.h"
 #include "MHD/WindowingParameters.h"
 
-#include <algorithm>	// std::sort
-#include <utility>		// std::pair, std::make_pair
-#include <vector>		// std::pair, std::make_pair
-
 #include "RaymarchTypes.generated.h"
 
 // USTRUCT for Directional light parameters.
@@ -186,14 +182,9 @@ const FVector FCubeFaceNormals[6] = {
 struct FMajorAxes
 {
 	// The 3 major axes indexes
-
-	std::vector<std::pair<FCubeFace, float>> FaceWeight;
+	TArray<TTuple<FCubeFace, float>> FaceWeights;
 
 	/* Returns the weighted major axes to propagate along to add/remove a light to/from a lightvolume
 	(LightPos must be converted to object-space). */
 	static FMajorAxes GetMajorAxes(FVector LightPos);
 };
-
-// Comparison function for a Face-weight pair, to sort in Descending order.
-static bool SortDescendingWeights(const std::pair<FCubeFace, float>& a, const std::pair<FCubeFace, float>& b);
-;

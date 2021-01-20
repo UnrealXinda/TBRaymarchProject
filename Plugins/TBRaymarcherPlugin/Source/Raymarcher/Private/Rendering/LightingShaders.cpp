@@ -45,7 +45,7 @@ DECLARE_GPU_STAT_NAMED(GPUClearingLights, TEXT("ClearingLightsInVolume"));
 /// Returns the dimensions of the plane cutting through the volume when going along an axis at the given indes.
 FIntVector GetTransposedDimensions(const FMajorAxes& Axes, const FRHITexture3D* VolumeRef, const unsigned index)
 {
-	FCubeFace face = Axes.FaceWeight[index].first;
+	FCubeFace face = Axes.FaceWeights[index].Key;
 	unsigned axis = (uint8) face / 2;
 	switch (axis)
 	{
@@ -67,13 +67,13 @@ FIntVector GetTransposedDimensions(const FMajorAxes& Axes, const FRHITexture3D* 
 int GetAxisDirection(const FMajorAxes& Axes, unsigned index)
 {
 	// All even axis number are going down on their respective axes.
-	return ((uint8) Axes.FaceWeight[index].first % 2 ? 1 : -1);
+	return ((uint8) Axes.FaceWeights[index].Key % 2 ? 1 : -1);
 }
 
 /// Returns the ReadWriteBuffer resource appropriate for the axis index.
 OneAxisReadWriteBufferResources& GetBuffers(const FMajorAxes Axes, const unsigned index, FBasicRaymarchRenderingResources& InParams)
 {
-	FCubeFace face = Axes.FaceWeight[index].first;
+	FCubeFace face = Axes.FaceWeights[index].Key;
 	unsigned axis = (uint8) face / 2;
 	return InParams.XYZReadWriteBuffers[axis];
 }
@@ -202,13 +202,13 @@ void GetLocalLightParamsAndAxes(const FDirLightParameters& LightParameters, cons
 
 	// Prevent near-zero bugs in the shader (if first axis is very, very dominant, the secondary axis offsets are giant
 	// and they just read out of bounds all the time.
-	if (OutLocalMajorAxes.FaceWeight[0].second > 0.99f)
+	if (OutLocalMajorAxes.FaceWeights[0].Value > 0.99f)
 	{
-		OutLocalMajorAxes.FaceWeight[0].second = 1.0f;
+		OutLocalMajorAxes.FaceWeights[0].Value = 1.0f;
 	}
 
 	// Set second axis weight to (1 - (first axis weight))
-	OutLocalMajorAxes.FaceWeight[1].second = 1 - OutLocalMajorAxes.FaceWeight[0].second;
+	OutLocalMajorAxes.FaceWeights[1].Value = 1 - OutLocalMajorAxes.FaceWeights[0].Value;
 }
 
 FSamplerStateRHIRef GetBufferSamplerRef(uint32 BorderColorInt)
@@ -223,7 +223,7 @@ uint32 GetBorderColorIntSingle(FDirLightParameters LightParams, FMajorAxes Major
 {
 	// Set alpha channel to the texture's red channel (when reading single-channel, only red component
 	// is read)
-	FLinearColor LightColor = FLinearColor(LightParams.LightIntensity * MajorAxes.FaceWeight[index].second, 0.0, 0.0, 0.0);
+	FLinearColor LightColor = FLinearColor(LightParams.LightIntensity * MajorAxes.FaceWeights[index].Value, 0.0, 0.0, 0.0);
 	return LightColor.ToFColor(true).ToPackedARGB();
 }
 
@@ -247,14 +247,14 @@ FClippingPlaneParameters RAYMARCHER_API GetLocalClippingParameters(const FRaymar
 // Returns the light's alpha at this major axis and weight (single channel)
 float GetLightAlpha(FDirLightParameters LightParams, FMajorAxes MajorAxes, unsigned index)
 {
-	return LightParams.LightIntensity * MajorAxes.FaceWeight[index].second;
+	return LightParams.LightIntensity * MajorAxes.FaceWeights[index].Value;
 }
 
 // Returns a 3x3 permutation matrix depending on the current propagation axis.
 // We use this matrix in the shaders to create offsets regardless of direction.
 FMatrix GetPermutationMatrix(FMajorAxes MajorAxes, unsigned index)
 {
-	uint8 Axis = (uint8) MajorAxes.FaceWeight[index].first / 2;
+	uint8 Axis = (uint8) MajorAxes.FaceWeights[index].Key / 2;
 	FMatrix retVal;
 	retVal.SetIdentity();
 
@@ -332,7 +332,7 @@ void AddDirLightToSingleLightVolume_RenderThread(FRHICommandListImmediate& RHICm
 	for (unsigned i = 0; i < 2; i++)
 	{
 		// Break if the axis weight == 0
-		if (LocalMajorAxes.FaceWeight[i].second == 0)
+		if (LocalMajorAxes.FaceWeights[i].Value == 0)
 		{
 			break;
 		}
@@ -369,7 +369,7 @@ void AddDirLightToSingleLightVolume_RenderThread(FRHICommandListImmediate& RHICm
 	for (unsigned i = 0; i < 2; i++)
 	{
 		// Break if the main axis weight == 1
-		if (LocalMajorAxes.FaceWeight[i].second == 0)
+		if (LocalMajorAxes.FaceWeights[i].Value == 0)
 		{
 			break;
 		}
@@ -383,7 +383,7 @@ void AddDirLightToSingleLightVolume_RenderThread(FRHICommandListImmediate& RHICm
 			GetTransposedDimensions(LocalMajorAxes, Resources.LightVolumeTextureRef->Resource->TextureRHI->GetTexture3D(), i);
 
 		FVector2D UVOffset =
-			GetUVOffset(LocalMajorAxes.FaceWeight[i].first, -LocalLightParams.LightDirection, TransposedDimensions);
+			GetUVOffset(LocalMajorAxes.FaceWeights[i].Key, -LocalLightParams.LightDirection, TransposedDimensions);
 		FMatrix PermutationMatrix = GetPermutationMatrix(LocalMajorAxes, i);
 
 		FIntVector LightVolumeSize = FIntVector(Resources.LightVolumeTextureRef->GetSizeX(),
@@ -391,7 +391,7 @@ void AddDirLightToSingleLightVolume_RenderThread(FRHICommandListImmediate& RHICm
 
 		FVector UVWOffset;
 		float StepSize;
-		GetStepSizeAndUVWOffset(LocalMajorAxes.FaceWeight[i].first, -LocalLightParams.LightDirection, TransposedDimensions,
+		GetStepSizeAndUVWOffset(LocalMajorAxes.FaceWeights[i].Key, -LocalLightParams.LightDirection, TransposedDimensions,
 			WorldParameters, StepSize, UVWOffset);
 
 		// Normalize UVW offset to length of largest voxel size to get rid of artifacts. (Not correct,
@@ -459,8 +459,8 @@ void ChangeDirLightInSingleLightVolume_RenderThread(FRHICommandListImmediate& RH
 
 	// If lights have different major axes, do a separate removal and addition.
 	// (Change dir light only works if it runs on the same major axes).
-	if (RemovedLocalMajorAxes.FaceWeight[0].first != AddedLocalMajorAxes.FaceWeight[0].first ||
-		RemovedLocalMajorAxes.FaceWeight[1].first != AddedLocalMajorAxes.FaceWeight[1].first)
+	if (RemovedLocalMajorAxes.FaceWeights[0].Key != AddedLocalMajorAxes.FaceWeights[0].Key ||
+		RemovedLocalMajorAxes.FaceWeights[1].Key != AddedLocalMajorAxes.FaceWeights[1].Key)
 	{
 		AddDirLightToSingleLightVolume_RenderThread(RHICmdList, Resources, RemovedLightParameters, false, WorldParameters);
 		AddDirLightToSingleLightVolume_RenderThread(RHICmdList, Resources, AddedLightParameters, true, WorldParameters);
@@ -527,21 +527,21 @@ void ChangeDirLightInSingleLightVolume_RenderThread(FRHICommandListImmediate& RH
 			RemovedLocalMajorAxes, Resources.LightVolumeTextureRef->Resource->TextureRHI->GetTexture3D(), AxisIndex);
 
 		FVector2D AddedPixOffset = GetUVOffset(
-			AddedLocalMajorAxes.FaceWeight[AxisIndex].first, -AddedLocalLightParams.LightDirection, TransposedDimensions);
+			AddedLocalMajorAxes.FaceWeights[AxisIndex].Key, -AddedLocalLightParams.LightDirection, TransposedDimensions);
 		FVector2D RemovedPixOffset = GetUVOffset(
-			RemovedLocalMajorAxes.FaceWeight[AxisIndex].first, -RemovedLocalLightParams.LightDirection, TransposedDimensions);
+			RemovedLocalMajorAxes.FaceWeights[AxisIndex].Key, -RemovedLocalLightParams.LightDirection, TransposedDimensions);
 
 		FVector2D AddedUVOffset = GetUVOffset(
-			AddedLocalMajorAxes.FaceWeight[AxisIndex].first, -AddedLocalLightParams.LightDirection, TransposedDimensions);
+			AddedLocalMajorAxes.FaceWeights[AxisIndex].Key, -AddedLocalLightParams.LightDirection, TransposedDimensions);
 		FVector2D RemovedUVOffset = GetUVOffset(
-			RemovedLocalMajorAxes.FaceWeight[AxisIndex].first, -RemovedLocalLightParams.LightDirection, TransposedDimensions);
+			RemovedLocalMajorAxes.FaceWeights[AxisIndex].Key, -RemovedLocalLightParams.LightDirection, TransposedDimensions);
 
 		FVector AddedUVWOffset, RemovedUVWOffset;
 		float AddedStepSize, RemovedStepSize;
 
-		GetStepSizeAndUVWOffset(AddedLocalMajorAxes.FaceWeight[AxisIndex].first, -AddedLocalLightParams.LightDirection,
+		GetStepSizeAndUVWOffset(AddedLocalMajorAxes.FaceWeights[AxisIndex].Key, -AddedLocalLightParams.LightDirection,
 			TransposedDimensions, WorldParameters, AddedStepSize, AddedUVWOffset);
-		GetStepSizeAndUVWOffset(RemovedLocalMajorAxes.FaceWeight[AxisIndex].first, -RemovedLocalLightParams.LightDirection,
+		GetStepSizeAndUVWOffset(RemovedLocalMajorAxes.FaceWeights[AxisIndex].Key, -RemovedLocalLightParams.LightDirection,
 			TransposedDimensions, WorldParameters, RemovedStepSize, RemovedUVWOffset);
 
 		// Normalize UVW offset to length of largest voxel size to get rid of artifacts. (Not correct,

@@ -25,26 +25,22 @@ FString GetDirectionName(FCubeFace Face)
 	}
 }
 
-bool SortDescendingWeights(const std::pair<FCubeFace, float>& a, const std::pair<FCubeFace, float>& b)
-{
-	return (a.second > b.second);
-}
-
 FMajorAxes FMajorAxes::GetMajorAxes(FVector LightPos)
 {
 	FMajorAxes RetVal;
-	std::vector<std::pair<FCubeFace, float>> faceVector;
+	TArray<TTuple<FCubeFace, float>> FaceVector;
 
 	for (int i = 0; i < 6; i++)
 	{
 		// Dot of position and face normal yields cos(angle)
-		float weight = FVector::DotProduct(FCubeFaceNormals[i], LightPos);
+		float Weight = FVector::DotProduct(FCubeFaceNormals[i], LightPos);
 
 		// Need to make sure we go along the axis with a positive weight, not negative.
-		weight = (weight > 0 ? weight * weight : 0);
-		RetVal.FaceWeight.push_back(std::make_pair(FCubeFace(i), weight));
+		Weight = (Weight > 0 ? Weight * Weight : 0);
+		RetVal.FaceWeights.Add(MakeTuple(FCubeFace(i), Weight));
 	}
 	// Sort so that the 3 major axes are the first.
-	std::sort(RetVal.FaceWeight.begin(), RetVal.FaceWeight.end(), SortDescendingWeights);
+	RetVal.FaceWeights.Sort([](const auto& A, const auto& B) { return A.Value > B.Value; });
+
 	return RetVal;
 }
